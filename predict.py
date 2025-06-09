@@ -81,28 +81,40 @@ async def predict_claude_single(text):
 async def predict_claude(texts: List[str]) -> List[str]:
     return await asyncio.gather(*(predict_claude_single(t) for t in texts))
 
-# --- RoBERTa (HuggingFace, batched) ---
-_roberta_model = None
-_roberta_tokenizer = None
+# --- RoBERTa (SuperAnnotate/roberta-large-llm-content-detector, RobertaClassifier, batched) ---
+from generated_text_detector.utils.model.roberta_classifier import RobertaClassifier
+from transformers import AutoTokenizer
+import torch
+import torch.nn.functional as F
+
+_roberta_model = RobertaClassifier.from_pretrained("SuperAnnotate/roberta-large-llm-content-detector")
+_roberta_tokenizer = AutoTokenizer.from_pretrained("SuperAnnotate/roberta-large-llm-content-detector")
 
 BATCH_SIZE = 16
 
 def predict_roberta(texts: List[str]) -> List[str]:
-    global _roberta_model, _roberta_tokenizer
-    if _roberta_model is None or _roberta_tokenizer is None:
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
-        _roberta_tokenizer = AutoTokenizer.from_pretrained("roberta-base")
-        _roberta_model = AutoModelForSequenceClassification.from_pretrained("roberta-base", num_labels=3)
-    import torch
-    label_map = {0: "HUMAN", 1: "AMBIGUOUS", 2: "AI"}
     preds = []
     for i in range(0, len(texts), BATCH_SIZE):
         batch = texts[i:i+BATCH_SIZE]
-        inputs = _roberta_tokenizer(batch, return_tensors="pt", truncation=True, padding=True)
+        tokens = _roberta_tokenizer(
+            batch,
+            add_special_tokens=True,
+            max_length=512,
+            padding='longest',
+            truncation=True,
+            return_token_type_ids=True,
+            return_tensors="pt"
+        )
         with torch.no_grad():
-            logits = _roberta_model(**inputs).logits
-            batch_preds = torch.argmax(logits, dim=1).tolist()
-            preds.extend([label_map.get(p, "AMBIGUOUS") for p in batch_preds])
+            _, logits = _roberta_model(**tokens)
+            probas = F.sigmoid(logits).squeeze(1).cpu().numpy()
+            for prob in probas:
+                if prob > 0.7:
+                    preds.append("AI")
+                elif prob < 0.3:
+                    preds.append("HUMAN")
+                else:
+                    preds.append("AMBIGUOUS")
     return preds
 
 # --- Random fallback ---
