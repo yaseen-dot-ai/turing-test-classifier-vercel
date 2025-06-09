@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+pandas
+numpy
+openai
+boto3
+transformers
+scikit-learn
+httpx
+pyarrow
+dotenv
+torch
