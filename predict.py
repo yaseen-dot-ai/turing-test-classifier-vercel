@@ -1,6 +1,7 @@
 import numpy as np
 import os
 from typing import List
+import asyncio
 
 CANDIDATES = ["gpt4o", "claude", "roberta"]
 CLASSES = ["HUMAN", "AMBIGUOUS", "AI"]
@@ -9,85 +10,82 @@ CLASSES = ["HUMAN", "AMBIGUOUS", "AI"]
 from dotenv import load_dotenv
 load_dotenv()
 
-# --- GPT-4o (OpenAI) ---
-def predict_gpt4o(texts: List[str]) -> List[str]:
-    import openai
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return _random_preds(len(texts))
-    openai.api_key = api_key
-    results = []
-    for text in texts:
-        try:
-            resp = openai.chat.completions.create(
-                model="gpt-4.1",
-                messages=[
-                    {"role": "user", "content": (
-                        "You are a Turing Test classifier. Given a text, respond with only one of these labels:\n"
-                        "- HUMAN: if you are confident it was written by a human,\n"
-                        "- AI: if you are confident it was written by an AI,\n"
-                        "- AMBIGUOUS: if you are unsure.\n\n"
-                        "Reply with only the label: HUMAN, AI, or AMBIGUOUS. Do not add anything else."
-                    )},
-                    {"role": "user", "content": f"text: {text}"}
-                ],
-                max_tokens=3,
-                temperature=0
-            )
-            out = resp.choices[0].message.content.strip().upper()
-            if out not in CLASSES:
-                out = "AMBIGUOUS"
-            results.append(out)
-        except Exception:
-            results.append("AMBIGUOUS")
-    return results
+# --- GPT-4o (OpenAI, LangChain) ---
+from langchain_openai import ChatOpenAI
 
-# --- Claude (Anthropic) ---
-def predict_claude(texts: List[str]) -> List[str]:
-    import httpx
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return _random_preds(len(texts))
-    results = []
-    for text in texts:
-        try:
-            headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": "claude-3-7-sonnet-20250219",
-                "max_tokens": 3,
-                "temperature": 0,
-                "messages": [
-                    {"role": "user", "content": (
-                        "You are a Turing Test classifier. Given a text, respond with only one of these labels:\n"
-                        "- HUMAN: if you are confident it was written by a human,\n"
-                        "- AI: if you are confident it was written by an AI,\n"
-                        "- AMBIGUOUS: if you are unsure.\n\n"
-                        "Reply with only the label: HUMAN, AI, or AMBIGUOUS. Do not add anything else."
-                    )},
-                    {"role": "user", "content": f"text: {text}"}
-                ]
-            }
-            resp = httpx.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json=payload,
-                timeout=10
-            )
-            out = resp.json()["content"][0]["text"].strip().upper()
-            if out not in CLASSES:
-                out = "AMBIGUOUS"
-            results.append(out)
-        except Exception:
-            results.append("AMBIGUOUS")
-    return results
+gpt4o_llm = ChatOpenAI(
+    model="gpt-4.1",
+    openai_api_key=os.getenv("OPENAI_API_KEY"),
+    max_tokens=5,
+    temperature=0,
+)
 
-# --- RoBERTa (HuggingFace) ---
+def gpt4o_messages(text):
+    return [
+        {"role": "user", "content": (
+            "You are a turing test classifier. "
+            "Given a text, respond with only one of these labels:\n"
+            "- HUMAN: if you are confident it was written by a human,\n"
+            "- AI: if you are confident it was written by an AI,\n"
+            "- AMBIGUOUS: if you are unsure.\n\n"
+            "Reply with only the label: HUMAN, AI, or AMBIGUOUS. Do not add anything else.\n"
+        )},
+        {"role": "user", "content": f"text: {text}"}
+    ]
+
+async def predict_gpt4o_single(text):
+    try:
+        out = await gpt4o_llm.ainvoke(gpt4o_messages(text))
+        label = out.content.strip().upper()
+        if label not in CLASSES:
+            label = "AMBIGUOUS"
+        return label
+    except Exception:
+        return "AMBIGUOUS"
+
+async def predict_gpt4o(texts: List[str]) -> List[str]:
+    return await asyncio.gather(*(predict_gpt4o_single(t) for t in texts))
+
+# --- Claude (Anthropic, LangChain) ---
+from langchain_anthropic import ChatAnthropic
+
+claude_llm = ChatAnthropic(
+    model="claude-3-7-sonnet-20250219",
+    anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+    max_tokens=5,
+    temperature=0,
+)
+
+def claude_messages(text):
+    return [
+        {"role": "user", "content": (
+            "You are a turing test classifier. Given a text, respond with only one of these labels:\n"
+            "- HUMAN: if you are confident it was written by a human,\n"
+            "- AI: if you are confident it was written by an AI,\n"
+            "- AMBIGUOUS: if you are unsure.\n\n"
+            "Reply with only the label: HUMAN, AI, or AMBIGUOUS. Do not add anything else.\n"
+        )},
+        {"role": "user", "content": f"text: {text}"}
+    ]
+
+async def predict_claude_single(text):
+    try:
+        out = await claude_llm.ainvoke(claude_messages(text))
+        label = out.content.strip().upper()
+        if label not in CLASSES:
+            label = "AMBIGUOUS"
+        return label
+    except Exception:
+        return "AMBIGUOUS"
+
+async def predict_claude(texts: List[str]) -> List[str]:
+    return await asyncio.gather(*(predict_claude_single(t) for t in texts))
+
+# --- RoBERTa (HuggingFace, batched) ---
 _roberta_model = None
 _roberta_tokenizer = None
+
+BATCH_SIZE = 16
 
 def predict_roberta(texts: List[str]) -> List[str]:
     global _roberta_model, _roberta_tokenizer
@@ -98,12 +96,13 @@ def predict_roberta(texts: List[str]) -> List[str]:
     import torch
     label_map = {0: "HUMAN", 1: "AMBIGUOUS", 2: "AI"}
     preds = []
-    for text in texts:
-        inputs = _roberta_tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    for i in range(0, len(texts), BATCH_SIZE):
+        batch = texts[i:i+BATCH_SIZE]
+        inputs = _roberta_tokenizer(batch, return_tensors="pt", truncation=True, padding=True)
         with torch.no_grad():
             logits = _roberta_model(**inputs).logits
-            pred = torch.argmax(logits, dim=1).item()
-            preds.append(label_map.get(pred, "AMBIGUOUS"))
+            batch_preds = torch.argmax(logits, dim=1).tolist()
+            preds.extend([label_map.get(p, "AMBIGUOUS") for p in batch_preds])
     return preds
 
 # --- Random fallback ---
@@ -111,11 +110,12 @@ def _random_preds(n):
     np.random.seed(42)
     return np.random.choice(CLASSES, size=n).tolist()
 
+# --- Unified batch_predict ---
 def batch_predict(texts, model):
     if model == "gpt4o":
-        return predict_gpt4o(list(texts))
+        return asyncio.run(predict_gpt4o(list(texts)))
     elif model == "claude":
-        return predict_claude(list(texts))
+        return asyncio.run(predict_claude(list(texts)))
     elif model == "roberta":
         return predict_roberta(list(texts))
     else:
