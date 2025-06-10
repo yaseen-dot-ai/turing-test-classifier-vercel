@@ -1,5 +1,5 @@
 virtual
+node_modules
+.next
 .env
-doc.md
-api/*.json
-*.pyc
+*__pycache__
