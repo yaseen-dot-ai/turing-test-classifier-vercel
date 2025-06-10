@@ -1,5 +1,5 @@
 virtual
 .env
 doc.md
-*.json
+api/*.json
 *.pyc
