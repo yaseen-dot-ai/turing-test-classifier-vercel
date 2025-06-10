@@ -15,4 +15,10 @@ class RunResponse(BaseModel):
     winner: str
     precision: Dict[str, float]
     recall: Dict[str, float]
-    predictions: Optional[Any] = None 
+    predictions: Optional[Any] = None
+
+class PredictRequest(BaseModel):
+    texts: List[str]
+
+class PredictResponse(BaseModel):
+    predictions: List[Dict[str, str]] 

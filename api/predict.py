@@ -3,8 +3,17 @@ import os
 from typing import List
 import asyncio
 
-CANDIDATES = ["gpt4o", "claude", "roberta"]
+
+CANDIDATES = ["gpt", "claude", "roberta"]
 CLASSES = ["HUMAN", "AMBIGUOUS", "AI"]
+
+
+# Display name mapping for API responses
+DISPLAY_NAME_MAP = {
+    "gpt": "gpt-4.1",
+    "claude": "claude-3-7-sonnet-20250219",
+    "roberta": "roberta-large-llm-response-detector"
+}
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -124,7 +133,7 @@ def _random_preds(n):
 
 # --- Unified batch_predict ---
 def batch_predict(texts, model):
-    if model == "gpt4o":
+    if model == "gpt":
         return asyncio.run(predict_gpt4o(list(texts)))
     elif model == "claude":
         return asyncio.run(predict_claude(list(texts)))
