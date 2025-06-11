@@ -18,6 +18,5 @@ class RunRequest(BaseModel):
 class RunResponse(BaseModel):
     run_id: str
     winner: str
-    precision: Dict[str, float]
-    recall: Dict[str, float]
+    results: Dict[str, Dict[str, Dict[str, float]]]  # {"gpt-4.1": {"precision": {...}, "recall": {...}}}
     predictions: Optional[List[Dict[str, str]]] = None 

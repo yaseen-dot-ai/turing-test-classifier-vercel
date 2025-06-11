@@ -2,7 +2,12 @@ import os
 import asyncio
 from typing import List
 import numpy as np
+import torch
+import torch.nn.functional as F
+import traceback
 from dotenv import load_dotenv
+from tqdm import tqdm
+import time
 
 load_dotenv()
 
@@ -14,6 +19,9 @@ DISPLAY_NAMES = {
     "roberta": "roberta-large-llm-response-detector"
 }
 CLASSES = ["HUMAN", "AI", "AMBIGUOUS"]
+
+# GPU setup
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # GPT-4 setup
 from langchain_openai import ChatOpenAI
@@ -33,6 +41,16 @@ claude_llm = ChatAnthropic(
     temperature=0,
 )
 
+# RoBERTa setup
+from generated_text_detector.utils.model.roberta_classifier import RobertaClassifier
+from transformers import AutoTokenizer
+
+_roberta_model = RobertaClassifier.from_pretrained("SuperAnnotate/roberta-large-llm-content-detector").to(device)
+_roberta_tokenizer = AutoTokenizer.from_pretrained("SuperAnnotate/roberta-large-llm-content-detector")
+
+BATCH_SIZE = 16
+interval = 5
+
 def get_prompt(text: str) -> List[dict]:
     return [
         {"role": "user", "content": (
@@ -46,37 +64,75 @@ def get_prompt(text: str) -> List[dict]:
         )}
     ]
 
+async def predict_gpt_single(text: str) -> str:
+    try:
+        response = await gpt_llm.ainvoke(get_prompt(text))
+        label = response.content.strip().upper()
+        if label not in CLASSES:
+            label = "AMBIGUOUS"
+        return label
+    except:
+        traceback.print_exc()
+        return "AMBIGUOUS"
+
 async def predict_gpt(texts: List[str]) -> List[str]:
-    results = []
-    for text in texts:
-        try:
-            response = await gpt_llm.ainvoke(get_prompt(text))
-            label = response.content.strip().upper()
-            if label not in CLASSES:
-                label = "AMBIGUOUS"
-            results.append(label)
-        except:
-            results.append("AMBIGUOUS")
-    return results
+    preds = []
+    for batch in tqdm(range(0, len(texts), BATCH_SIZE), desc="GPT"):
+        batch_texts = texts[batch:batch+BATCH_SIZE]
+        batch_preds = await asyncio.gather(*(predict_gpt_single(text) for text in batch_texts))
+        preds.extend(batch_preds)
+        time.sleep(interval)
+    return preds
+
+async def predict_claude_single(text: str) -> str:
+    try:
+        response = await claude_llm.ainvoke(get_prompt(text))
+        label = response.content.strip().upper()
+        if label not in CLASSES:
+            label = "AMBIGUOUS"
+        return label
+    except:
+        traceback.print_exc()
+        return "AMBIGUOUS"
 
 async def predict_claude(texts: List[str]) -> List[str]:
-    results = []
-    for text in texts:
-        try:
-            response = await claude_llm.ainvoke(get_prompt(text))
-            label = response.content.strip().upper()
-            if label not in CLASSES:
-                label = "AMBIGUOUS"
-            results.append(label)
-        except:
-            results.append("AMBIGUOUS")
-    return results
+    preds = []
+    for batch in tqdm(range(0, len(texts), BATCH_SIZE), desc="Claude"):
+        batch_texts = texts[batch:batch+BATCH_SIZE]
+        batch_preds = await asyncio.gather(*(predict_claude_single(text) for text in batch_texts))
+        preds.extend(batch_preds)
+        time.sleep(interval)
+    return preds
 
 def predict_roberta(texts: List[str]) -> List[str]:
-    # Simplified roberta - returns random for demo
-    # Replace with actual roberta model
-    np.random.seed(42)
-    return np.random.choice(CLASSES, size=len(texts)).tolist()
+    preds = []
+    for batch in tqdm(range(0, len(texts), BATCH_SIZE), desc="RoBERTa"):
+        batch_texts = texts[batch:batch+BATCH_SIZE]
+        tokens = _roberta_tokenizer(
+            batch_texts,
+            add_special_tokens=True,
+            max_length=512,
+            padding='longest',
+            truncation=True,
+            return_token_type_ids=True,
+            return_tensors="pt"
+        )
+        
+        # Move to GPU if available
+        tokens = {k: v.to(device) for k, v in tokens.items()}
+        
+        with torch.no_grad():
+            _, logits = _roberta_model(**tokens)
+            probas = F.sigmoid(logits).squeeze(1).cpu().tolist()
+            for prob in probas:
+                if prob > 0.7:
+                    preds.append("AI")
+                elif prob < 0.3:
+                    preds.append("HUMAN")
+                else:
+                    preds.append("AMBIGUOUS")
+        time.sleep(interval)
+    return preds
 
 async def batch_predict(texts: List[str], model: str) -> List[str]:
     if model == "gpt":

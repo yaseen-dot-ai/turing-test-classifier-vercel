@@ -34,11 +34,12 @@ def per_class_metrics(cm, labels):
 async def predict_labels(req: PredictRequest):
     results = []
     
-    # Get predictions from all models
-    all_predictions = {}
-    for model in MODELS:
-        preds = await batch_predict(req.texts, model)
-        all_predictions[model] = preds
+    # Get predictions from all models concurrently
+    prediction_tasks = [batch_predict(req.texts, model) for model in MODELS]
+    all_predictions_list = await asyncio.gather(*prediction_tasks)
+    
+    # Map results back to model names
+    all_predictions = dict(zip(MODELS, all_predictions_list))
     
     # Format results
     for i, text in enumerate(req.texts):
@@ -57,11 +58,12 @@ async def run_experiment(req: RunRequest):
     texts = [s.text for s in req.samples]
     labels = [s.label for s in req.samples]
     
-    # Get predictions from all models
-    all_predictions = {}
-    for model in MODELS:
-        preds = await batch_predict(texts, model)
-        all_predictions[model] = preds
+    # Get predictions from all models concurrently
+    prediction_tasks = [batch_predict(texts, model) for model in MODELS]
+    all_predictions_list = await asyncio.gather(*prediction_tasks)
+    
+    # Map results back to model names
+    all_predictions = dict(zip(MODELS, all_predictions_list))
     
     # Calculate metrics for each model
     metrics = {}
@@ -78,8 +80,7 @@ async def run_experiment(req: RunRequest):
     response_data = {
         "run_id": run_id,
         "winner": winner_display,
-        "precision": metrics[winner_display]["precision"],
-        "recall": metrics[winner_display]["recall"]
+        "results": metrics
     }
     
     # Add predictions if requested
