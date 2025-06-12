@@ -8,15 +8,17 @@ import traceback
 from dotenv import load_dotenv
 from tqdm import tqdm
 import time
+import json
 
 load_dotenv()
 
 # Model display names
 MODELS = ["gpt", "claude", "roberta"]
+fine_tuned_config = json.load(open("ft_config.json"))
 DISPLAY_NAMES = {
-    "gpt": "gpt-4.1",
+    "gpt": fine_tuned_config["gpt"] or "gpt-4.1",
     "claude": "claude-3-7-sonnet-20250219", 
-    "roberta": "roberta-large-llm-response-detector"
+    "roberta": fine_tuned_config["roberta"] or "SuperAnnotate/roberta-large-llm-content-detector"
 }
 CLASSES = ["HUMAN", "AI", "AMBIGUOUS"]
 
@@ -26,7 +28,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # GPT-4 setup
 from langchain_openai import ChatOpenAI
 gpt_llm = ChatOpenAI(
-    model="gpt-4.1",
+    model=DISPLAY_NAMES["gpt"],
     openai_api_key=os.getenv("OPENAI_API_KEY"),
     max_tokens=5,
     temperature=0,
@@ -35,7 +37,7 @@ gpt_llm = ChatOpenAI(
 # Claude setup  
 from langchain_anthropic import ChatAnthropic
 claude_llm = ChatAnthropic(
-    model="claude-3-7-sonnet-20250219",
+    model=DISPLAY_NAMES["claude"],
     anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
     max_tokens=5,
     temperature=0,
@@ -45,8 +47,8 @@ claude_llm = ChatAnthropic(
 from generated_text_detector.utils.model.roberta_classifier import RobertaClassifier
 from transformers import AutoTokenizer
 
-_roberta_model = RobertaClassifier.from_pretrained("SuperAnnotate/roberta-large-llm-content-detector").to(device)
-_roberta_tokenizer = AutoTokenizer.from_pretrained("SuperAnnotate/roberta-large-llm-content-detector")
+_roberta_model = RobertaClassifier.from_pretrained(DISPLAY_NAMES["roberta"]).to(device)
+_roberta_tokenizer = AutoTokenizer.from_pretrained(DISPLAY_NAMES["roberta"])
 
 BATCH_SIZE = 16
 interval = 5
