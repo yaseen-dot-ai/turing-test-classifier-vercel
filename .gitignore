@@ -4,4 +4,6 @@ node_modules
 .env
 *__pycache__
 experiments
-api/ft_config.json
+
+ft_config.json
+quick-tuned-roberta
