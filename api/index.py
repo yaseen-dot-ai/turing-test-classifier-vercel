@@ -5,7 +5,17 @@ import time
 import asyncio
 from typing import Dict
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def utc_stamp() -> str:
     return str(int(time.time() * 1000))
