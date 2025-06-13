@@ -16,9 +16,9 @@ load_dotenv()
 MODELS = ["gpt", "claude", "roberta"]
 fine_tuned_config = json.load(open("ft_config.json"))
 DISPLAY_NAMES = {
-    "gpt": fine_tuned_config["gpt"] or "gpt-4.1",
+    "gpt": fine_tuned_config.get("gpt", "gpt-4.1"),
     "claude": "claude-3-7-sonnet-20250219", 
-    "roberta": fine_tuned_config["roberta"] or "SuperAnnotate/roberta-large-llm-content-detector"
+    "roberta": fine_tuned_config.get("roberta", "SuperAnnotate/roberta-large-llm-content-detector")
 }
 CLASSES = ["HUMAN", "AI", "AMBIGUOUS"]
 
