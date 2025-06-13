@@ -34,8 +34,12 @@ export default function Home() {
   const [runResult, setRunResult] = useState<{
     run_id: string;
     winner: string;
-    precision: { [key: string]: number };
-    recall: { [key: string]: number };
+    results: {
+      [key: string]: {
+        precision: { [key: string]: number };
+        recall: { [key: string]: number };
+      };
+    };
     predictions?: any[];
   } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -229,13 +233,23 @@ export default function Home() {
                     <div className={`${CARD_BG} p-4 rounded-lg`}>
                       <div className="text-sm text-white/70">Avg Precision</div>
                       <div className="font-bold text-lg">
-                        {(Object.values(runResult.precision).reduce((a: any, b: any) => a + b, 0) / 3 * 100).toFixed(1)}%
+                        {runResult?.results ? 
+                          (Object.values(runResult.results).reduce((acc: number, model) => {
+                            const modelPrecision = Object.values(model.precision).reduce((a: number, b: number) => a + b, 0) / 3;
+                            return acc + modelPrecision;
+                          }, 0) / Object.keys(runResult.results).length * 100).toFixed(1) + '%' :
+                          'N/A'}
                       </div>
                     </div>
                     <div className={`${CARD_BG} p-4 rounded-lg`}>
                       <div className="text-sm text-white/70">Avg Recall</div>
                       <div className="font-bold text-lg">
-                        {(Object.values(runResult.recall).reduce((a: any, b: any) => a + b, 0) / 3 * 100).toFixed(1)}%
+                        {runResult?.results ? 
+                          (Object.values(runResult.results).reduce((acc: number, model) => {
+                            const modelRecall = Object.values(model.recall).reduce((a: number, b: number) => a + b, 0) / 3;
+                            return acc + modelRecall;
+                          }, 0) / Object.keys(runResult.results).length * 100).toFixed(1) + '%' :
+                          'N/A'}
                       </div>
                     </div>
                   </div>
