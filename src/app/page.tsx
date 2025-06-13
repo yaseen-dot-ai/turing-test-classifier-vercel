@@ -50,7 +50,7 @@ export default function Home() {
       const texts = JSON.parse(predictJson);
       if (!Array.isArray(texts)) throw new Error("Must be an array of strings");
       
-      const res = await fetch("http://3.236.142.175:7007/predict", {
+      const res = await fetch("https://turing-test.featurely.ai/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texts }),
@@ -78,7 +78,7 @@ export default function Home() {
         throw new Error("Must have samples array");
       }
       
-      const res = await fetch("http://3.236.142.175:7007/run", {
+      const res = await fetch("https://turing-test.featurely.ai/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
